@@ -19,14 +19,17 @@ Before any code gets written, the foundation needs to be solid. This phase is al
 **Deliverables:**
 - ARIA_Project_Idea.md complete and accurate (done)
 - ARIA_Strategy.md written (this document)
-- Both repos created on GitHub: `aria-engine` and `aria-bot`
+- ARIA_Data_Policy.md written (done)
+- ARIA_Structure.md written (done)
+- Three repos created on GitHub: `aria-engine`, `aria-bot`, `iris`
 - Turso databases provisioned: `aria-core`, `aria-users`, `aria-knowledge`
-- Private Discord logging server created with all log channels set up
+- Private Discord logging server created with all log channels and consent channel set up
 - schema.js written and migrations run on all three databases
 - configdata.json filled in for the first bot (Aria)
 - .env set up for the engine
+- .env set up for Iris (Discord token and allowed engine URL)
 
-**Done when:** Both repos exist, databases are live with correct schema, logging server is ready, and the project structure matches the plan exactly.
+**Done when:** All three repos exist, databases are live with correct schema, logging server is ready, and the project structure matches the plan exactly.
 
 ---
 
@@ -117,9 +120,19 @@ Then utils:
 - utils/formatter.js
 - utils/typing.js
 - utils/cooldown.js
+- utils/validator.js
+- utils/classifier.js
+- utils/verify.js
+- utils/queue.js
 
 Then jobs:
-- jobs/scheduler.js
+- jobs/scheduler.js (fires at midnight Stockholm time)
+
+Then Iris:
+- iris/handlers/log.js
+- iris/handlers/consent.js
+- iris/utils/formatter.js
+- iris/index.js
 
 Then index.js.
 
