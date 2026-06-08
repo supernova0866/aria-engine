@@ -32,11 +32,12 @@ A few rules that every part of this project should follow:
 
 ## Project Structure
 
-ARIA is split into two separate repositories.
+ARIA is split into three separate repositories.
 
 ```
 aria-engine/     The brain. Stateless logic engine. Hosted on Render.
 aria-bot/        The face. Owns the databases, Discord connection, and AI calls.
+iris/            The logger and server manager. Receives log events from the engine via HTTP and posts them to Discord. Also handles consent flow and tester onboarding.
 ```
 
 The bot reads state from its databases, assembles a context object, sends it to the engine, gets back a processed result and assembled prompt, calls the AI provider, writes updated state back to the databases, and sends the response to Discord. The engine never touches any of that directly.
@@ -52,14 +53,15 @@ engine/
 ├── package.json
 │
 ├── core/
-│   ├── clock.js                    UTC time, date awareness, real-time age calculation.
-│   ├── mood.js                     Mood state machine, intensity tracking, passive drift.
+│   ├── information.md              Reference doc for every file in this folder.
+│   ├── clock.js                    Stockholm time, date awareness, real-time age calculation.
+│   ├── mood.js                     Mood state machine, intensity tracking, passive drift, anchor system.
 │   ├── residue.js                  Emotional bleed between mood transitions.
 │   ├── cycle.js                    Menstrual cycle phase calculator (full 4-phase model).
 │   ├── fatigue.js                  Energy tracking, interaction drain, recharge logic.
 │   ├── lifecycle.js                Daily state machine. Sleeping, eating, busy, free, etc.
 │   ├── contagion.js                Mood contagion from user emotional signals.
-│   ├── attention.js                Selective ignoring logic and topic boredom tracking.
+│   ├── attention.js                Selective ignoring, mention detection, topic boredom, reaction decision.
 │   ├── atmosphere.js               Server atmosphere state. Quiet/chaos meter, collective energy.
 │   ├── typing.js                   Typing delay, multi-message decisions, typo probability.
 │   └── personality.js             Assembles all active context into a clean system prompt.
@@ -146,7 +148,27 @@ bot/
 
 ---
 
-## configdata.json
+## iris File Structure
+
+Iris is a minimal Express server with a Discord client. It has two jobs: relay log events from the engine to the correct Discord channel, and manage the consent flow and tester onboarding in the internal server.
+
+```
+iris/
+├── index.js                        Entry point. Starts the Express server and Discord client.
+├── .env                            Discord bot token and allowed engine URL.
+├── package.json
+│
+├── handlers/
+│   ├── log.js                      Receives POST from engine, formats entry, sends to channel_id.
+│   └── consent.js                  Handles consent button, modal validation, role assignment, consent log.
+│
+└── utils/
+    └── formatter.js                Formats log entries for Discord. Handles 2000 char splits and file attachments.
+```
+
+The engine posts to Iris via HTTP with a `channel_id` and log content in the body. Iris formats it and sends to that channel. No routing logic, no channel mapping — the engine decides where it goes.
+
+---
 
 Only the bot has a configdata.json. The engine has no identity file because it receives everything it needs inside the context object on every request. The engine's only standalone config is a .env file for the server port.
 
@@ -161,7 +183,6 @@ The bot's configdata.json is the single source of truth for who she is and how s
   "ai_provider": "groq",
   "ai_model": "llama3-8b-8192",
   "engine_url": "https://aria-engine.onrender.com",
-  "timezone": "UTC",
   "active_channels": [
     "CHANNEL_ID_1",
     "CHANNEL_ID_2",
@@ -174,7 +195,7 @@ Available persona options: `chaotic_loveable`, `sarcastic_witty`, `sweet_moody`,
 
 The AI provider and model can be swapped freely without touching any logic. This is how different release phases test different backends.
 
-ARIA is designed for controlled environments only. A maximum of three servers and a small fixed list of active channels per server. She is not meant to be spread thin across hundreds of servers with strangers. The smaller the community, the richer the relationships.
+ARIA is designed for controlled environments only. A maximum of ten servers and a small fixed list of active channels per server. She is not meant to be spread thin across hundreds of servers with strangers. The smaller the community, the richer the relationships.
 
 ---
 
@@ -554,20 +575,15 @@ Her top 20-30 active words get included in the system prompt so the AI uses them
 
 ### User Memory
 
-**Thoughts (two layers):**
+**Thoughts (three layers):**
 
-Every user she interacts with has two separate "thoughts" fields in the database.
+Every user she interacts with has three thought fields in the database.
 
-Permanent thought: Her deep-rooted feeling about them. Changes very slowly. Only shifts when recent behavior has been consistently one direction for several days. This is what she actually thinks of someone at a fundamental level.
+Permanent thought: Her deep-rooted feeling about them. Changes very slowly. Only shifts when recent behavior has been consistently one direction for several days.
 
-Recent thought: How they have been lately. Volatile, updates nightly, resets faster. A close friend being annoying for a few days affects the recent thought without touching the permanent one. If the behavior keeps up for long enough (tracked via a 7-day sentiment log), the permanent thought starts to nudge as well.
+Recent thought: How they have been lately. Volatile, updates nightly, resets faster. A close friend being annoying for a few days affects the recent thought without touching the permanent one. If the behavior keeps up long enough the permanent thought starts to nudge as well.
 
-Both thoughts get injected into the prompt as natural language. The AI sees something like:
-
-```
-Your deep feeling about them: "honestly one of your favorites, they have always been real with you"
-Your recent impression: "they have been kind of off lately, snippy for no reason, it's been bugging you"
-```
+Secrets: Things she knows or feels about this person that she holds privately. Never injected directly into the prompt but they influence the tone descriptors that shape how she talks to them.
 
 **Score Decay:**
 
@@ -591,7 +607,7 @@ If too many people talk to her at once, or one conversation runs unusually long,
 
 ## The Nightly Job Pipeline
 
-Every midnight UTC, while she is asleep, the bot's scheduler triggers a sequence of job endpoints on the engine. The bot handles all the data movement. The engine handles all the processing.
+Every midnight Stockholm time, while she is asleep, the bot's scheduler triggers a sequence of job endpoints on the engine. The bot handles all the data movement. The engine handles all the processing.
 
 The flow for each job is the same: bot reads relevant data from DB, sends it to the engine job endpoint, engine processes it and returns results, bot writes results back to DB.
 
@@ -701,7 +717,7 @@ The context object the bot sends to ARIA looks like this:
     "bad_day": false
   },
   "cycle": { "phase": "luteal", "day": 22 },
-  "time": { "utc_hour": 23, "utc_day_of_week": "wednesday", "utc_date": "2025-06-04" },
+  "time": { "local_hour": 23, "local_day_of_week": "wednesday", "local_date": "2025-06-04", "time_of_day": "night", "season": "summer", "timezone": "CEST" },
   "vocabulary": ["no cap", "lowkey", "fr fr", "that's wild"],
   "knowledge": {
     "relevant": ["knows what valorant is", "familiar with lo-fi music"],
@@ -778,8 +794,6 @@ ARIA processes all of that and sends back:
 The `response_behavior` field tells the bot exactly how to deliver the response. `type` can be `message`, `reaction`, or `no_response`. The bot acts accordingly without making any decisions of its own.
 
 ---
-
-
 
 ## Personality Anchor System
 
@@ -900,11 +914,13 @@ Each phase may use a different AI provider, swapped via the bot's configdata.jso
 | Engine runtime | Node.js |
 | Engine hosting | Render |
 | Bot framework | discord.js |
+| Logger and server manager | Iris, hosted on Render |
 | Core database | Turso (aria-core) — bot side |
 | User database | Turso (aria-users) — bot side |
 | Knowledge database | Turso (aria-knowledge) — bot side |
 | Real-time sync | WebSocket |
 | Bot-to-engine | REST API |
+| Engine-to-Iris | HTTP POST |
 | AI provider | Configurable via bot's configdata.json |
 
 ---
@@ -931,6 +947,6 @@ Contributors should treat the interaction logs not just as memory for the curren
 
 ## A Note for Contributors
 
-If you are joining this project, read this document before touching any code. Every file exists for a reason and every system connects to something else. The comments in each file are written to explain the why, not just the what. If something is confusing, the comments should explain the thinking behind it.
+If you are joining this project, read this document before touching any code. Every file exists for a reason and every system connects to something else. Each folder has an information.md that explains what every file in that folder does, why it exists, and what connects to it. Read that before opening any file for the first time.
 
 The goal of this project is not to build a clever chatbot. It is to build something that makes people forget they are talking to software. Every decision should be made with that in mind.
