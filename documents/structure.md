@@ -126,9 +126,9 @@ iris/
 
 ```
 docs/
-├── ✅ ARIA_Project_Idea.md
-├── ✅ ARIA_Strategy.md
-├── ✅ ARIA_Data_Policy.md
-├── ✅ ARIA_Structure.md
-└── ✅ core_information.md
+├── ✅ project.md
+├── ✅ strategy.md
+├── ✅ data-policy.md
+├── ✅ structure.md
+└── ✅ information.md
 ```
